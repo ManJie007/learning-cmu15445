@@ -1,0 +1,77 @@
+Joins
+Aggregates
+String Operations
+Date and Time
+Output Redirection
+Output Control
+
+Nested Queries
+
+Invoke queries inside of other queries to execute more complex logic within a single query. Nested queries are often difficult to optimize.
+The scope of outer query is included in an inner query (i.e. the inner query can access attributes from outer query), but not the other way around.
+Inner queries can appear in almost any part of a query:
+
+1. SELECT Output Targets:
+    SELECT (SELECT 1) AS one FROM student;
+2. FROM Clause:
+    SELECT name
+    FROM student AS s, (SELECT sid FROM enrolled) AS e
+    WHERE s.sid = e.sid;
+3. WHERE Clause:
+    SELECT name FROM student
+    WHERE sid IN ( SELECT sid FROM enrolled );
+
+Nested Query Results Expressions:
+• ALL: Must satisfy expression for all rows in sub-query.
+• ANY: Must satisfy expression for at least one row in sub-query.
+• IN: Equivalent to =ANY().
+• EXISTS: At least one row is returned.
+
+
+Window Functions
+A window function perform “sliding” calculation across a set of tuples that are related. Like an aggregation but tuples are not grouped into a single output tuple.
+
+Functions: The window function can be any of the aggregation functions that we discussed above. There are also also special window functions:
+1. ROW NUMBER: The number of the current row.
+2. RANK: The order position of the current row.
+
+Grouping: The OVER clause specifies how to group together tuples when computing the window function.Use PARTITION BY to specify group.
+    SELECT cid, sid, ROW_NUMBER() OVER (PARTITION BY cid)
+    FROM enrolled ORDER BY cid;
+
+We can also put an ORDER BY within OVER to ensure a deterministic ordering of results even if database changes internally.
+    SELECT *, ROW_NUMBER() OVER (ORDER BY cid)
+    FROM enrolled ORDER BY cid;
+
+IMPORTANT:The DBMS computes RANK after the window function sorting, whereas it computes ROW NUMBER before the sorting.
+
+Common Table Expressions
+Common Table Expressions (CTEs) are an alternative to windows or nested queries when writing more complex queries. They provide a way to write auxiliary statements for user in a larger query. CTEs can be thought of as a temporary table that is scoped to a single query.
+The WITH clause binds the output of the inner query to a temporary result with that name.
+
+Example: Generate a CTE called cteName that contains a single tuple with a single attribute set to “1”. Select all attributes from this CTE. cteName.
+    WITH cteName AS (
+    SELECT 1
+    )
+    SELECT * FROM cteName;
+
+We can bind output columns to names before the AS:
+
+    WITH cteName (col1, col2) AS (
+    SELECT 1, 2
+    )
+    SELECT col1 + col2 FROM cteName;
+
+A single query may contain multiple CTE declarations:
+    WITH cte1 (col1) AS (SELECT 1), cte2 (col2) AS (SELECT 2)
+    SELECT * FROM cte1, cte2;
+
+Adding the RECURSIVE keyword after WITH allows a CTE to reference itself. This enables the implementation of recursion in SQL queries. With recursive CTEs, SQL is provably Turing-complete, implying that it is as computationally expressive as more general purpose programming languages (if a bit more cumbersome).
+Example: Print the sequence of numbers from 1 to 10.
+    WITH RECURSIVE cteSource (counter) AS (
+        ( SELECT 1 )
+        UNION
+        ( SELECT counter + 1 FROM cteSource
+    WHERE counter < 10 )
+)
+SELECT * FROM cteSource;
