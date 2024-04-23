@@ -1,0 +1,106 @@
+Volatile Devices:
+    Volatile storage supports fast random access with byte-addressable locations. This means that the program can jump to any byte address and get the data that is there.
+
+Non-Volatile Devices:
+    It is also block/page addressable. This means that in order to read a value at a particular offset, the program first has to load the 4 KB page into memory that holds the value the program wants to read.
+    Non-volatile storage is traditionally better at sequential access (reading multiple contiguous chunks of data at the same time).
+
+Since our DBMS architecture assumes that the database is stored on disk, the components of the DBMS are responsible for figuring out how to move data between non-volatile disk and volatile memory since the system cannot operate on the data directly on disk.
+
+###Random access on non-volatile storage is almost always much slower than sequential access.
+###DBMS will want to maximize sequential access.
+    Algorithms try to reduce number of writes to random pages so that data is stored in contiguous blocks.
+    Allocating multiple pages at the same time is called an extent.
+
+The database is all on disk, and the data in database files is organized into pages, with the first page being the directory page. 
+
+It does this by having a buffer pool that manages the data movement back and forth between disk and memory. The DBMS also has an execution engine that will execute queries. The execution engine will ask the buffer pool for a specific page, and the buffer pool will take care of bringing that page into memory and giving the execution engine a pointer to that page in memory.
+
+This high-level design goal is like virtual memory, where there is a large address space and a place for the OS to bring in pages from disk.
+
+One way to achieve this virtual memory is by using mmap to map the contents of a file in a process’ address space, which makes the OS responsible for moving pages back and forth between disk and memory.Unfortunately, this means that if mmap hits a page fault, the process will be blocked.
+    • You never want to use mmap in your DBMS if you need to write.
+    • The DBMS (almost) always wants to control things itself and can do a better job at it since it knows more about the data being accessed and the queries being processed.
+    • The operating system is not your friend.
+
+    Problem #1: Transaction Safety → OS can flush dirty pages at any time.
+    Problem #2: I/O Stalls → DBMS doesn't know which pages are in memory. The OS will stall a thread on page fault.
+    Problem #3: Error Handling → Difficult to validate pages. Any access can cause a SIGBUS that the DBMS must handle.
+    Problem #4: Performance Issues → OS data structure contention. TLB shootdowns.
+
+DBMS (almost) always wants to control things itself and can do a better job than the OS.
+    → Flushing dirty pages to disk in the correct order.
+    → Specialized prefetching.
+    → Buffer replacement policy.
+    → Thread/process scheduling.
+
+It is possible to use the OS by using:
+    • madvise: Tells the OS know when you are planning on reading certain pages.
+    • mlock: Tells the OS to not swap memory ranges out to disk.
+    • msync: Tells the OS to flush memory ranges out to disk.
+We do not advise using mmap in a DBMS for correctness and performance reasons.Even though the system will have functionalities that seem like something the OS can provide, having the DBMS implement these procedures itself gives it better control and performance.
+
+Problem #1: How the DBMS represents the database in files on disk.
+File Storage 
+    The storage manager is responsible for maintaining a database's files.
+    It organizes the files as a collection of pages.
+    A page is a fixed-size block of data.
+        It can contain tuples, meta-data, indexes, log records...
+        Each page is given a unique identifier.
+            The DBMS uses an indirection layer to map page IDs to physical locations.
+    
+    Different DBMSs manage pages in files on disk in different ways.
+        → Heap File Organization
+            A heap file is an unordered collection of pages with tuples that are stored in random order.
+        → Tree File Organization
+        → Sequential / Sorted File Organization (ISAM)
+        → Hashing File Organization
+    
+    The DBMS maintains special pages that tracks the location of data pages in the database files.
+        → Must make sure that the directory pages are in sync with the data pages.
+    The directory also records meta-data about available space:
+        → The number of free slots per page.
+        → List of free / empty pages.
+
+Page Layout 
+    Every page contains a header of metadata about the page's contents.
+        → Page Size
+        → Checksum
+        → DBMS Version
+        → Transaction Visibility
+        → Compression / Encoding Meta-data
+        → Schema Information
+        → Data Summary / Sketches
+
+Tuple Layout
+    Approach #1: Tuple-oriented Storage 
+        SLOTTED PAGES
+            The slot array maps "slots" to the tuples' starting position offsets.
+            The header keeps track of:
+                → The # of used slots
+                → The offset of the starting location of the last slot used.
+
+                Header [][][][][][][][][][][]
+
+
+                 [  Tuple #4   ][  Tuple #3 
+                ][  Tuple #2  ][  Tuple #1  ]
+    The DBMS assigns each logical tuple a unique record identifier that represents its physical location in the database.
+        → File Id, Page Id, Slot #
+        → Most DBMSs do not store ids in tuple.
+    
+    A tuple is essentially a sequence of bytes.
+    It's the job of the DBMS to interpret those bytes into attribute types and values.
+
+    Each tuple is prefixed with a header that contains meta-data about it.
+        → Visibility info (concurrency control) 
+        → Bit Map for NULL values.
+
+        [[Header]   Attribute Data]
+    
+    We do not need to store meta-data about the schema.
+
+    Approach #2: Log-structured Storage 
+    Approach #3: Index-organized Storage
+
+Problem #2: How the DBMS manages its memory and moves data back-and-forth from disk.
